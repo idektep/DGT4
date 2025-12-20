@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # =========================================================
+  # 1. EMQX - MQTT Broker
+  # =========================================================
+  emqx:
+    image: emqx/emqx:latest
+    container_name: emqx
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    environment:
+      EMQX_MANAGEMENT__DEFAULT_ADMIN_PASSWORD: adminadmin
+    restart: unless-stopped
+    networks:
+      - iot_stack_net
+    healthcheck:
+      test: ["CMD-SHELL", "emqx ctl status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+
+  # =========================================================
+  # 2. InfluxDB
+  # =========================================================
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    restart: unless-stopped
+    networks:
+      - iot_stack_net
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+
+  # =========================================================
+  # 3. Node-RED 
+  # =========================================================
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    restart: unless-stopped
+    networks:
+      - iot_stack_net
+    depends_on:
+      emqx:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+
+  # =========================================================
+  # 4. Grafana
+  # =========================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"     
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+    networks:
+      - iot_stack_net
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+
+# =========================================================
+# Networks & Volumes
+# =========================================================
+networks:
+  iot_stack_net:
+    driver: bridge
+
+volumes:
+  emqx_data:
+  emqx_log:
+  influxdb_data:
+  grafana_data:
+  nodered_data:
