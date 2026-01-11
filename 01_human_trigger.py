@@ -7,7 +7,7 @@ import time
 # ======================
 MQTT_BROKER = "broker.emqx.io"
 MQTT_PORT = 1883
-TOPIC_STATUS = "dgt1/smartcam/status"
+TOPIC_STATUS = "dgt/smartcam/status"
 
 # ======================
 # MQTT SETUP
@@ -90,3 +90,4 @@ cap.release()
 cv2.destroyAllWindows()
 client.loop_stop()
 client.disconnect()
+
