@@ -2,106 +2,90 @@ import cv2
 import paho.mqtt.client as mqtt
 import time
 
-# =========================
+# ======================
 # MQTT CONFIG
-# =========================
-BROKER = "broker.emqx.io"
-PORT = 1883
-TOPIC = "dgt/smartcam/status"
+# ======================
+MQTT_BROKER = "broker.emqx.io"
+MQTT_PORT = 1883
+TOPIC_STATUS = "dgt1/smartcam/status"
 
-# =========================
-# MQTT CLIENT
-# =========================
-client = mqtt.Client(client_id="smartcam_face")
-client.connect(BROKER, PORT, 60)
+# ======================
+# MQTT SETUP
+# ======================
+client = mqtt.Client()
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
 client.loop_start()
 
-# =========================
-# OPENCV SETUP
-# =========================
-cap = cv2.VideoCapture(0)
-
+# ======================
+# LOAD FACE CASCADE
+# (comes with OpenCV)
+# ======================
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-face_present = False
-detect_confirm = 0
-CONFIRM_FRAMES = 3   # debounce
+# ======================
+# CAMERA
+# ======================
+cap = cv2.VideoCapture(0)
 
-print("📷 SmartCam started (Face Detection Trigger)")
+prev_detected = False
 
-# =========================
-# MAIN LOOP
-# =========================
+print("[CV] SmartCam started")
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    frame = cv2.resize(frame, (640, 480))
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     faces = face_cascade.detectMultiScale(
         gray,
-        scaleFactor=1.1,
-        minNeighbors=6,     # เพิ่ม = เข้มงวดขึ้น
-        minSize=(60, 60)   # กัน noise เล็ก ๆ
+        scaleFactor=1.2,
+        minNeighbors=5,
+        minSize=(60, 60)
     )
 
-    face_count = len(faces)
+    detected = len(faces) > 0
 
-    # ─────────────────────
-    # DEBOUNCE + EDGE TRIGGER
-    # ─────────────────────
-    if face_count > 0:
-        detect_confirm += 1
-    else:
-        detect_confirm = 0
-        if face_present:
-            print("🙂 No face → Reset state")
-            face_present = False
+    # ======================
+    # EVENT LOGIC
+    # ======================
+    if detected and not prev_detected:
+        print("[EVENT] detect")
+        client.publish(TOPIC_STATUS, "detect")
 
-    if detect_confirm >= CONFIRM_FRAMES and not face_present:
-        client.publish(TOPIC, "detect")
-        print("📤 Face detected → Send 'detect'")
-        face_present = True
+    if not detected and prev_detected:
+        print("[EVENT] clear")
+        client.publish(TOPIC_STATUS, "clear")
 
-    # ─────────────────────
-    # DRAW FACE BOX
-    # ─────────────────────
+    prev_detected = detected
+
+    # ======================
+    # DRAW DEBUG
+    # ======================
     for (x, y, w, h) in faces:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(
-            frame,
-            "Face",
-            (x, y - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2
-        )
 
     cv2.putText(
         frame,
-        f"Faces: {face_count}",
+        f"Faces: {len(faces)}",
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 0, 255),
+        1,
+        (0, 255, 0) if detected else (0, 0, 255),
         2
     )
 
-    cv2.imshow("SmartCam Face Detection", frame)
+    cv2.imshow("SmartCam (Face Detection)", frame)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
         break
 
-    time.sleep(0.1)
-
-# =========================
+# ======================
 # CLEANUP
-# =========================
+# ======================
 cap.release()
 cv2.destroyAllWindows()
 client.loop_stop()
